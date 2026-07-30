@@ -33,3 +33,19 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  prompting-frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    image: pr-agent/prompting-frontend:latest
+    container_name: pr-agent-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - BACKEND_URL=http://prompting-agent:8090
+    depends_on:
+      prompting-agent:
+        condition: service_started

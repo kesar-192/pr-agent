@@ -69,7 +69,7 @@ class ChatMessage:
     def __post_init__(self) -> None:
         # Allow role to be passed as a plain string ("user", "assistant", ...)
         if not isinstance(self.role, ChatRole):
-            self.role = ChatRole(self.role)
+            self.role = ChatRole(self.role.lower())
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -112,9 +112,9 @@ class Finding:
 
     def __post_init__(self) -> None:
         if not isinstance(self.severity, FindingSeverity):
-            self.severity = FindingSeverity(self.severity)
+            self.severity = FindingSeverity(self.severity.lower())
         if not isinstance(self.status, FindingStatus):
-            self.status = FindingStatus(self.status)
+            self.status = FindingStatus(self.status.lower())
         if self.end_line is None:
             self.end_line = self.start_line
 
@@ -234,9 +234,9 @@ class ReviewSession:
             return None
         for key, value in kwargs.items():
             if key == "status" and not isinstance(value, FindingStatus):
-                value = FindingStatus(value)
+                value = FindingStatus(value.lower())
             if key == "severity" and not isinstance(value, FindingSeverity):
-                value = FindingSeverity(value)
+                value = FindingSeverity(value.lower())
             setattr(finding, key, value)
         self.touch()
         return finding
