@@ -50,6 +50,20 @@ ADD pr_agent pr_agent
 ADD tests tests
 ADD docker/mosaico docker/mosaico
 
+FROM base AS prompting_agent
+ADD pr_agent pr_agent
+EXPOSE 8090
+
+RUN useradd --system --uid 1001 pragent \
+    && chown -R pragent:pragent /app
+
+USER pragent
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8090/ || exit 1
+
+CMD ["uvicorn", "pr_agent.servers.prompting_server:app", "--host", "0.0.0.0", "--port", "8090"]
+
 FROM base AS cli
 ADD pr_agent pr_agent
 ENTRYPOINT ["python", "pr_agent/cli.py"]

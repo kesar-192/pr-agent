@@ -1,5 +1,5 @@
 """
-pr_agent/session/session.py
+pr_agent/sessions/session.py
 
 Data model for the interactive Prompting Agent.
 
@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional
 # Enums
 # --------------------------------------------------------------------------- #
 
-class MessageRole(str, Enum):
+class ChatRole(str, Enum):
     """Who authored a given ChatMessage."""
     USER = "user"
     ASSISTANT = "assistant"
@@ -61,15 +61,15 @@ class FindingStatus(str, Enum):
 class ChatMessage:
     """A single turn in the conversation between developer and agent."""
 
-    role: MessageRole
+    role: ChatRole
     content: str
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Allow role to be passed as a plain string ("user", "assistant", ...)
-        if not isinstance(self.role, MessageRole):
-            self.role = MessageRole(self.role)
+        if not isinstance(self.role, ChatRole):
+            self.role = ChatRole(self.role)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -191,14 +191,14 @@ class ReviewSession:
 
     def add_message(
         self,
-        role,
+        role: ChatRole | str,
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> ChatMessage:
         """Append a message to the conversation history and touch the session."""
         message = ChatMessage(role=role, content=content, metadata=metadata or {})
         self.conversation_history.append(message)
-        if message.role in (MessageRole.USER, MessageRole.ASSISTANT):
+        if message.role in (ChatRole.USER, ChatRole.ASSISTANT):
             self.turn_count += 1
         self.touch()
         return message
@@ -270,7 +270,6 @@ class ReviewSession:
         return {
             "session_id": self.session_id,
             "pr_url": self.pr_url,
-            "diff_content": self.diff_content,
             "pr_metadata": self.pr_metadata,
             "conversation_history": [m.to_dict() for m in self.conversation_history],
             "findings": [f.to_dict() for f in self.findings],

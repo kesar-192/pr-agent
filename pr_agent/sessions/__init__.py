@@ -1,19 +1,20 @@
-from pr_agent.session.session import (
+from pr_agent.sessions.session import (
     ChatMessage,
+    ChatRole,
     Finding,
     FindingSeverity,
     FindingStatus,
-    MessageRole,
     ReviewSession,
 )
-from pr_agent.session.session_manager import SessionManager
+from pr_agent.sessions.session_manager import SessionManager, SessionNotFoundError
 
 __all__ = [
     "ChatMessage",
+    "ChatRole",
     "Finding",
     "FindingSeverity",
     "FindingStatus",
-    "MessageRole",
     "ReviewSession",
     "SessionManager",
+    "SessionNotFoundError",
 ]

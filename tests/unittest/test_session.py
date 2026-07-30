@@ -1,14 +1,14 @@
 from datetime import datetime, timedelta, timezone
 
-from pr_agent.session.session import (
+from pr_agent.sessions.session import (
     ChatMessage,
+    ChatRole,
     Finding,
     FindingSeverity,
     FindingStatus,
-    MessageRole,
     ReviewSession,
 )
-from pr_agent.session.session_manager import SessionManager
+from pr_agent.sessions.session_manager import SessionManager
 
 
 # ----------------------------------------------------------------------- #
@@ -19,7 +19,7 @@ from pr_agent.session.session_manager import SessionManager
 class TestChatMessage:
     def test_role_coercion_from_string(self):
         msg = ChatMessage(role="user", content="hello")
-        assert msg.role == MessageRole.USER
+        assert msg.role == ChatRole.USER
 
     def test_default_metadata_is_empty_dict(self):
         msg = ChatMessage(role="assistant", content="hi")
@@ -37,7 +37,7 @@ class TestChatMessage:
         msg = ChatMessage(role="system", content="init", metadata={"k": "v"})
         d = msg.to_dict()
         msg2 = ChatMessage.from_dict(d)
-        assert msg2.role == MessageRole.SYSTEM
+        assert msg2.role == ChatRole.SYSTEM
         assert msg2.content == "init"
         assert msg2.metadata == {"k": "v"}
 

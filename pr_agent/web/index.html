@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PR-Agent — Interactive Review</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+</head>
+<body>
+  <header id="header-bar">
+    <div class="brand">PR-Agent <span class="dim">/ discuss</span></div>
+    <form id="pr-url-form">
+      <input id="pr-url-input" type="text" placeholder="https://github.com/org/repo/pull/42" required />
+      <button type="submit" id="start-review-btn">Start Review</button>
+    </form>
+    <div id="session-status" class="status idle">idle</div>
+  </header>
+
+  <main id="layout">
+    <section id="diff-panel">
+      <div id="file-tabs"></div>
+      <pre id="diff-view"><code class="language-diff" id="diff-code"></code></pre>
+    </section>
+
+    <aside id="chat-sidebar">
+      <div id="chat-messages"></div>
+      <form id="chat-form">
+        <textarea id="chat-input" rows="2" placeholder="Ask a question, or say 'fix it'…" disabled></textarea>
+        <div class="chat-actions">
+          <button type="button" id="cancel-btn" hidden>Cancel</button>
+          <button type="submit" id="send-btn" disabled>Send</button>
+        </div>
+      </form>
+    </aside>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+services:
+  prompting-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prompting_agent
+    image: pr-agent/prompting-agent:latest
+    container_name: pr-agent-prompting
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      # ── LLM Provider Keys ──────────────────────────────────────────
+      # At least one is required.
+      # - GROQ_API_KEY=${GROQ_API_KEY:-}       # groq/llama-3.3-70b-versatile
+      # - OPENAI_API_KEY=${OPENAI_API_KEY:-}   # gpt-4o / gpt-4o-mini
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}  # claude-sonnet-4
+      #
+      # ── Git Provider Token (required) ──────────────────────────────
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      #
+      # ── How to pass secrets ────────────────────────────────────────
+      # Option A — .env file in the project root:
+      #   $ echo "GITHUB_TOKEN=ghp_..." >> .env
+      #   $ docker compose -f docker-compose.prompting-agent.yml up
+      #
+      # Option B — inline:
+      #   $ GITHUB_TOKEN=ghp_... GROQ_API_KEY=gsk_... \
+      #     docker compose -f docker-compose.prompting-agent.yml up
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
