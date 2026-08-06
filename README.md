@@ -1,259 +1,229 @@
+# PR-Agent — Prompting Agent
 
+An interactive, multi-turn extension to [PR-Agent](https://github.com/the-pr-agent/pr-agent), the open-source AI code review tool.
 
-<br />
+Where PR-Agent's existing `/review` command is **one-shot** — the agent analyzes a PR once and posts a static comment — the Prompting Agent turns that into a **conversation**. It analyzes the diff, presents findings one at a time, explains its reasoning, asks clarifying questions about your intent, discusses trade-offs, and only writes a code fix after you've confirmed the approach. It ships with its own web UI: a diff viewer on one side, a chat sidebar on the other.
 
-<div align="center">
-
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://codium.ai/images/pr_agent/logo-dark.png" width="330">
-  <source media="(prefers-color-scheme: light)" srcset="https://codium.ai/images/pr_agent/logo-light.png" width="330">
-  <img src="https://codium.ai/images/pr_agent/logo-light.png" alt="logo" width="330">
-
-</picture>
-<br>
-The Original Open-Source PR Reviewer
-<br><br>
-<a href="https://github.com/the-pr-agent/pr-agent/commits/main">
-<img alt="GitHub" src="https://img.shields.io/github/last-commit/the-pr-agent/pr-agent/main?style=for-the-badge" height="20">
-</a>
-</div>
+This is a new, additive module (`pr_agent/sessions/`, `pr_agent/tools/pr_prompting_agent.py`, `pr_agent/servers/prompting_server.py`, `pr_agent/web/`) — it does not modify any existing PR-Agent command, provider, or server.
 
 ---
 
- This repository contains the open-source PR Agent Project. 
- It is not the Qodo free tier.
- 
-PR-Agent is an open-source, AI-powered code review agent and a community-maintained legacy project of Qodo. It is distinct from Qodo’s primary AI code review offering, which provides a feature-rich, context-aware experience. Qodo now offers a free tier that integrates seamlessly with GitHub, GitLab, Bitbucket, and Azure DevOps for high-quality automated reviews.
-
-
-## Sponsors
-
-PR-Agent is a community-maintained open-source project, with its ongoing development supported by our sponsors. If you'd like to support the project, consider [becoming a sponsor](https://github.com/sponsors/naorpeled).
-
-<p align="center">
-  <h3 align="center">🥇 Gold Sponsor</h3>
-</p>
-
-<p align="center">
-  <a target="_blank" href="https://www.qodo.ai/">
-    <img alt="Qodo — Gold sponsor" src="https://www.qodo.ai/wp-content/uploads/2025/03/qodo-logo.svg" width="300">
-  </a>
-</p>
-
-<p align="center">
-  <a target="_blank" href="https://www.qodo.ai/get-started/">Try the free version of Qodo</a>
-</p>
-
-
 ## Table of Contents
 
-- [Getting Started](#getting-started)
-- [Why Use PR-Agent?](#why-use-pr-agent)
-- [Features](#features)
-- [See It in Action](#see-it-in-action)
-- [How It Works](#how-it-works)
-- [Data Privacy](#data-privacy)
-- [Contributing](#contributing)
+- [Why this exists](#why-this-exists)
+- [What's in this repo](#whats-in-this-repo)
+- [Architecture](#architecture)
+- [Quickstart](#quickstart)
+  - [Run with Docker Compose](#run-with-docker-compose)
+  - [Run as a standalone container](#run-as-a-standalone-container)
+  - [Run locally without Docker](#run-locally-without-docker)
+- [Using the web UI](#using-the-web-ui)
+- [API reference](#api-reference)
+- [Data model](#data-model)
+- [Prompt templates](#prompt-templates)
+- [Current limitation: mock providers](#current-limitation-mock-providers)
+- [Environment variables](#environment-variables)
+- [Roadmap](#roadmap)
 
-## Getting Started
+---
 
-> [!NOTE]
-> **Docker Hub namespace migration.** Releases `0.34.2` and later are published under [`pragent/pr-agent`](https://hub.docker.com/r/pragent/pr-agent). Older releases (up to and including `v0.31`) remain available at the legacy [`codiumai/pr-agent`](https://hub.docker.com/r/codiumai/pr-agent) namespace as a frozen archive — no new images are pushed there. Update any pinned `image:` / `docker pull` / `uses: docker://` references when upgrading to `0.34.2+`.
+## Why this exists
 
-### 🚀 Quick Start for PR-Agent
+PR-Agent's core tools (`/review`, `/improve`, `/describe`, `/ask`) are fast and cheap because each one is a single LLM call. That's great for a quick pass, but it means:
 
-#### 1. GitHub Action (Recommended)
+- There's no discussion — the agent states findings, you read them, done.
+- `/ask` has no memory between questions.
+- The agent never explains *why* something is a problem in any depth, and never asks you anything before proposing a fix.
 
-Add automated PR reviews to your repository with a simple workflow file:
+The Prompting Agent is deliberately the opposite: slower, conversational, and closer to how a senior engineer actually reviews a colleague's PR — read the diff, flag concerns, ask what you were going for, discuss alternatives, then write the fix once you both agree on it.
 
-```yaml
-# .github/workflows/pr-agent.yml
-name: PR Agent
-on:
-  pull_request:
-    types: [opened, synchronize]
-jobs:
-  pr_agent_job:
-    runs-on: ubuntu-latest
-    steps:
-    - name: PR Agent action step
-      uses: the-pr-agent/pr-agent@main
-      env:
-        OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+## What's in this repo
+
 ```
-[Full GitHub Action setup guide](https://docs.pr-agent.ai/installation/github/#run-as-a-github-action)
+pr_agent/
+├── sessions/
+│   ├── session.py            # ChatMessage, Finding, ReviewSession dataclasses
+│   └── session_manager.py    # In-memory session store, TTL cleanup
+├── tools/
+│   └── pr_prompting_agent.py # PRPromptingAgent — analysis / discussion / summary turns
+├── servers/
+│   └── prompting_server.py   # FastAPI + SSE server, all /api/v1/sessions endpoints
+├── settings/
+│   └── prompting_agent_prompts.toml  # System/user prompt templates (Jinja2)
+├── web/
+│   ├── index.html            # Dashboard shell: top navbar + 3-panel workspace
+│   ├── style.css             # "yard-night" dark/light theme, glassmorphism, glow states
+│   └── app.js                # Session management, diff rendering, SSE chat streaming
+├── Dockerfile.prompting-agent
+└── requirements-prompting-agent.txt
 
-#### 2. CLI Usage (Local Development)
+docker-compose.prompting-agent.yml
+```
 
-Run PR-Agent locally on your repository:
+## Architecture
+
+```
+Browser (pr_agent/web/)
+   │  POST /api/v1/sessions, /messages, /cancel  (REST)
+   │  GET  /streams/{session_id}                 (SSE — EventSource)
+   ▼
+FastAPI server (prompting_server.py)
+   │
+   ├─ SessionManager (sessions/session_manager.py)
+   │     in-memory ReviewSession store, TTL-based cleanup
+   │
+   └─ PRPromptingAgent (tools/pr_prompting_agent.py)
+         ├─ renders prompts from prompting_agent_prompts.toml (Jinja2)
+         ├─ calls an AI handler (chat_completion / chat_completion_stream)
+         └─ calls a git provider (get_pr_diff / get_pr_metadata)
+```
+
+REST is used for anything the developer initiates (create session, send a message, cancel, close); SSE is used for the one thing that streams — the agent's reply — because it needs zero extra infrastructure (no WebSocket upgrade, works behind any proxy, auto-reconnects via the browser's native `EventSource`).
+
+A session moves through three phases:
+
+1. **Analysis** (`PRPromptingAgent.run`) — fetch the diff once, ask the model to identify issues, and store them as `Finding` objects.
+2. **Discussion** (`PRPromptingAgent.handle_message`) — every message the developer sends is answered by streaming tokens back over SSE; the agent tracks which finding is "current" and updates its status as the conversation progresses.
+3. **Summary** (`PRPromptingAgent.summarize`) — on session close, the agent produces a markdown wrap-up: what was resolved, what was dismissed, what's still pending.
+
+## Quickstart
+
+### Run with Docker Compose
+
+From the repository root:
+
 ```bash
-pip install pr-agent
-export OPENAI_KEY=your_key_here
-pr-agent --pr_url https://github.com/owner/repo/pull/123 review
+docker compose -f docker-compose.prompting-agent.yml up --build
 ```
-[Complete CLI setup guide](https://docs.pr-agent.ai/usage-guide/automations_and_usage/#local-repo-cli)
 
-#### 3. Other Platforms
+Then open:
 
-- [GitLab webhook setup](https://docs.pr-agent.ai/installation/gitlab/)
-- [BitBucket app installation](https://docs.pr-agent.ai/installation/bitbucket/)
-- [Azure DevOps setup](https://docs.pr-agent.ai/installation/azure/)
+```
+http://localhost:8090/
+```
 
-[//]: # (## News and Updates)
+To stop it:
 
-[//]: # ()
-[//]: # (## Aug 8, 2025)
+```bash
+docker compose -f docker-compose.prompting-agent.yml down
+```
 
-[//]: # ()
-[//]: # ()
-[//]: # ()
-[//]: # (## Jul 1, 2025)
+### Run as a standalone container
 
-[//]: # (You can now receive automatic feedback from Qodo Merge in your local IDE after each commit. Read more about it [here]&#40;https://github.com/qodo-ai/agents/tree/main/agents/qodo-merge-post-commit&#41;.)
+```bash
+docker build -f pr_agent/Dockerfile.prompting-agent -t pr-agent/prompting-agent:latest .
+docker run --rm -p 8090:8090 pr-agent/prompting-agent:latest
+```
 
-[//]: # ()
-[//]: # ()
-[//]: # (## Jun 21, 2025)
+### Run locally without Docker
 
-[//]: # ()
-[//]: # (v0.30 was [released]&#40;https://github.com/the-pr-agent/pr-agent/releases&#41;)
+```bash
+pip install -r pr_agent/requirements-prompting-agent.txt
+uvicorn pr_agent.servers.prompting_server:app --reload --port 8090
+```
 
-[//]: # ()
-[//]: # ()
-[//]: # (## Apr 30, 2025)
+Either way, the server serves both the API and the static web UI from the same process — there's nothing else to start.
 
-[//]: # ()
-[//]: # (A new feature is now available in the `/improve` tool for Qodo Merge 💎 - Chat on code suggestions.)
+## Using the web UI
 
-[//]: # ()
-[//]: # (<img width="512" alt="image" src="https://codium.ai/images/pr_agent/improve_chat_on_code_suggestions_ask.png" />)
+1. Paste a PR URL into the top navbar and click **Analyze**. The agent fetches the diff and runs its first-pass analysis.
+2. The diff appears in the center panel with a collapsible file tree on the left; lines with findings are highlighted by severity and clickable.
+3. The right-hand panel lists the findings ("manifest") and is where you talk to the agent — click a finding, or a highlighted diff line, to draft a question about it.
+4. Send a message; the reply streams in token-by-token over SSE.
+5. Click **End & summarize** when you're done — this calls `DELETE /api/v1/sessions/{id}`, which returns a markdown summary shown in a modal.
+6. The **Sessions** dropdown in the navbar lists every session still open on the server (`GET /api/v1/sessions`), so you can resume or close any of them without losing your place.
 
-[//]: # ()
-[//]: # (Read more about it [here]&#40;https://docs.pr-agent.ai/tools/improve/#chat-on-code-suggestions&#41;.)
+## API reference
 
-[//]: # ()
-[//]: # ()
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/sessions` | List active sessions (summary: id, PR URL, turn count, open findings). |
+| `POST` | `/api/v1/sessions` | Create a session. Body: `{"pr_url": "..."}`. Runs the initial analysis and returns `{"session_id", "status"}`. |
+| `GET` | `/api/v1/sessions/{id}` | Full session state — metadata, findings, conversation history. |
+| `GET` | `/api/v1/sessions/{id}/diff` | The diff text plus finding annotations (file/line/severity) for rendering. |
+| `POST` | `/api/v1/sessions/{id}/messages` | Send a developer message. Body: `{"content": "..."}`. Returns `{"stream_url"}` to open for the reply. |
+| `GET` | `/streams/{id}` | SSE stream for the in-flight reply. Events: `token`, `finding_update`, `error`, `done`. |
+| `POST` | `/api/v1/sessions/{id}/cancel` | Cancel an in-flight generation. |
+| `DELETE` | `/api/v1/sessions/{id}` | Close the session and return `{"status", "summary"}`. |
 
-## Why Use PR-Agent?
+Example flow:
 
-### 🎯 Built for Real Development Teams
+```bash
+# 1. create a session
+curl -X POST http://localhost:8090/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"pr_url":"https://github.com/owner/repo/pull/123"}'
+# -> {"session_id": "...", "status": "ready"}
 
-**Fast & Affordable**: Each tool (`/review`, `/improve`, `/ask`) uses a single LLM call (~30 seconds, low cost)
+# 2. ask a question
+curl -X POST http://localhost:8090/api/v1/sessions/<id>/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Why is this a problem?"}'
+# -> {"stream_url": "/streams/<id>"}
 
-**Handles Any PR Size**: Our [PR Compression strategy](https://docs.pr-agent.ai/core-abilities/#pr-compression-strategy) effectively processes both small and large PRs
+# 3. read the reply
+curl -N http://localhost:8090/streams/<id>
 
-**Highly Customizable**: JSON-based prompting allows easy customization of review categories and behavior via [configuration files](pr_agent/settings/configuration.toml)
+# 4. close it out
+curl -X DELETE http://localhost:8090/api/v1/sessions/<id>
+```
 
-**Platform Agnostic**: 
-- **Git Providers**: GitHub, GitLab, BitBucket, Azure DevOps, Gitea
-- **Deployment**: CLI, GitHub Actions, Docker, self-hosted, webhooks
-- **AI Models**: OpenAI GPT, Claude, Deepseek, and more
+## Data model
 
-**Open Source Benefits**:
-- Full control over your data and infrastructure
-- Customize prompts and behavior for your team's needs
-- No vendor lock-in
-- Community-driven development
+Defined in `pr_agent/sessions/session.py`:
 
-## Features
+- **`ChatMessage`** — `role` (`user` / `assistant` / `system`), `content`, `timestamp`, `metadata`.
+- **`Finding`** — `id`, `file`, `start_line`, `end_line`, `severity` (`critical`/`high`/`medium`/`low`), `category`, `explanation`, `question_for_developer`, `confidence`, `status` (`open`/`discussed`/`resolved`/`dismissed`).
+- **`ReviewSession`** — `session_id`, `pr_url`, `diff_content`, `pr_metadata`, `conversation_history: list[ChatMessage]`, `findings: list[Finding]`, `current_finding_id`, `turn_count`, `created_at`, `last_active`, `ttl_minutes`.
 
-<div style="text-align:left;">
+`SessionManager` (`session_manager.py`) is an in-memory store keyed by `session_id`, with a background task that evicts sessions past their TTL (default 60 minutes).
 
-PR-Agent offers comprehensive pull request functionalities integrated with various git providers:
+## Prompt templates
 
-|                                                         |                                                                                        | GitHub | GitLab | Bitbucket | Azure DevOps | Gitea |
-|---------------------------------------------------------|----------------------------------------------------------------------------------------|:------:|:------:|:---------:|:------------:|:-----:|
-| [TOOLS](https://docs.pr-agent.ai/tools/)         | [Describe](https://docs.pr-agent.ai/tools/describe/)                            |   ✅   |   ✅   |    ✅     |      ✅      |  ✅   |
-|                                                         | [Review](https://docs.pr-agent.ai/tools/review/)                                |   ✅   |   ✅   |    ✅     |      ✅      |  ✅   |
-|                                                         | [Improve](https://docs.pr-agent.ai/tools/improve/)                              |   ✅   |   ✅   |    ✅     |      ✅      |  ✅   |
-|                                                         | [Ask](https://docs.pr-agent.ai/tools/ask/)                                      |   ✅   |   ✅   |    ✅     |      ✅      |       |
-|                                                         | ⮑ [Ask on code lines](https://docs.pr-agent.ai/tools/ask/#ask-lines)            |   ✅   |   ✅   |           |              |       |
-|                                                         | [Help Docs](https://docs.pr-agent.ai/tools/help_docs/?h=auto#auto-approval)     |   ✅   |   ✅   |    ✅     |              |       |
-|                                                         | [Update CHANGELOG](https://docs.pr-agent.ai/tools/update_changelog/)            |   ✅   |   ✅   |    ✅     |      ✅      |       |
-|                                                         |                                                                                                                     |        |        |           |              |       |
-| [USAGE](https://docs.pr-agent.ai/usage-guide/)   | [CLI](https://docs.pr-agent.ai/usage-guide/automations_and_usage/#local-repo-cli)                            |   ✅   |   ✅   |    ✅     |      ✅      |  ✅   |
-|                                                         | [App / webhook](https://docs.pr-agent.ai/usage-guide/automations_and_usage/#github-app)                      |   ✅   |   ✅   |    ✅     |      ✅      |  ✅   |
-|                                                         | [Tagging bot](https://github.com/the-pr-agent/pr-agent#try-it-now)                                                     |   ✅   |        |           |              |       |
-|                                                         | [Actions](https://docs.pr-agent.ai/installation/github/#run-as-a-github-action)                              |   ✅   |   ✅   |    ✅     |      ✅      |       |
-|                                                         |                                                                                                                     |        |        |           |              |       |
-| [CORE](https://docs.pr-agent.ai/core-abilities/) | [Adaptive and token-aware file patch fitting](https://docs.pr-agent.ai/core-abilities/compression_strategy/) |   ✅   |   ✅   |    ✅     |      ✅      |       |
-|                                                         | [Dynamic context](https://docs.pr-agent.ai/core-abilities/dynamic_context/)                                  |   ✅   |   ✅   |    ✅     |      ✅      |       |
-|                                                         | [Fetching ticket context](https://docs.pr-agent.ai/core-abilities/fetching_ticket_context/)                  |   ✅    |  ✅    |     ✅     |              |       |
-|                                                         | [Interactivity](https://docs.pr-agent.ai/core-abilities/interactivity/)                                      |   ✅   |  ✅   |           |              |       |
-|                                                         | [Local and global metadata](https://docs.pr-agent.ai/core-abilities/metadata/)                               |   ✅   |   ✅   |    ✅     |      ✅      |       |
-|                                                         | [Multiple models support](https://docs.pr-agent.ai/usage-guide/changing_a_model/)                            |   ✅   |   ✅   |    ✅     |      ✅      |       |
-|                                                         | [PR compression](https://docs.pr-agent.ai/core-abilities/compression_strategy/)                              |   ✅   |   ✅   |    ✅     |      ✅      |       |
-|                                                         | [Self reflection](https://docs.pr-agent.ai/core-abilities/self_reflection/)                                  |   ✅   |   ✅   |    ✅     |      ✅      |       |
+`pr_agent/settings/prompting_agent_prompts.toml` holds three Jinja2-rendered prompt pairs:
 
-[//]: # (- Support for additional git providers is described in [here]&#40;./docs/Full_environments.md&#41;)
-___
+- **`prompting_agent_analysis_prompt`** — first turn only. Identifies issues, explains root cause, classifies severity, and asks a clarifying question per finding — explicitly forbidden from proposing a fix at this stage. Includes anti-hallucination rules: only reference what's literally in the diff, flag uncertainty instead of stating it as fact.
+- **`prompting_agent_discussion_prompt`** — every later turn. Branches behavior by developer intent ("why?", disagreement, "alternatives?", "fix it", "next finding").
+- **`prompting_agent_summary_prompt`** — session close. Groups findings into Resolved / Dismissed / Pending and lists any decisions made along the way.
 
-## See It in Action
+## Current limitation: mock providers
 
-</div>
-<h4><a href="https://github.com/the-pr-agent/pr-agent/pull/530">/describe</a></h4>
-<div align="center">
-<p float="center">
-<img src="https://www.codium.ai/images/pr_agent/describe_new_short_main.png" width="512">
-</p>
-</div>
-<hr>
+`build_agent()` in `prompting_server.py` currently wires up `MockGitProvider` and `MockAIHandler` (in `pr_prompting_agent.py`) instead of a real git provider and a real LLM. This is intentional for now — it means the whole session lifecycle (analysis → discussion → SSE streaming → summary) runs and is testable with zero external credentials.
 
-<h4><a href="https://github.com/the-pr-agent/pr-agent/pull/732#issuecomment-1975099151">/review</a></h4>
-<div align="center">
-<p float="center">
-<kbd>
-<img src="https://www.codium.ai/images/pr_agent/review_new_short_main.png" width="512">
-</kbd>
-</p>
-</div>
-<hr>
+To go live, swap the two lines inside `build_agent()`:
 
-<h4><a href="https://github.com/the-pr-agent/pr-agent/pull/732#issuecomment-1975099159">/improve</a></h4>
-<div align="center">
-<p float="center">
-<kbd>
-<img src="https://www.codium.ai/images/pr_agent/improve_new_short_main.png" width="512">
-</kbd>
-</p>
-</div>
+```python
+# from:
+git_provider = MockGitProvider(pr_url)
+ai_handler = MockAIHandler()
 
-<hr>
+# to, e.g.:
+from pr_agent.git_providers.utils import get_git_provider_with_context
+from pr_agent.algo.ai_handlers.litellm_ai_handler import LiteLLMAIHandler
+git_provider = get_git_provider_with_context(pr_url)
+ai_handler = LiteLLMAIHandler()
+```
 
-## How It Works
+Both `PRPromptingAgent` and `PromptRenderer` were written against the `GitProviderProtocol` / `AIHandlerProtocol` interfaces already used elsewhere in PR-Agent, so no other code needs to change.
 
-The following diagram illustrates PR-Agent tools and their flow:
+## Environment variables
 
-![PR-Agent Tools](https://www.qodo.ai/images/pr_agent/diagram-v0.9.png)
+The compose file wires these in as optional — they aren't read by anything yet (see above), but exist so the switch to real providers doesn't require touching the Docker setup:
 
-## Data Privacy
+| Variable | Purpose |
+|---|---|
+| `ANTHROPIC_API_KEY` | Claude models via `LiteLLMAIHandler`. |
+| `OPENAI_API_KEY` | OpenAI models via `LiteLLMAIHandler`. |
+| `GITHUB_TOKEN` | Auth for `GitProvider` implementations reading/posting to GitHub PRs. |
 
-### Self-hosted PR-Agent
+## Roadmap
 
-- If you host PR-Agent with your OpenAI API key, it is between you and OpenAI. You can read their API data privacy policy here:
-https://openai.com/enterprise-privacy
+- Swap `Mock*` classes for the real `LiteLLMAIHandler` / `GitProvider` stack (see above).
+- Redis-backed `SessionManager` for persistence across restarts and multi-instance deployment.
+- Register `prompting_agent` / `discuss` as CLI commands in `pr_agent/agent/pr_agent.py`, alongside `/review`, `/improve`, etc.
+- Apply confirmed fixes directly via the git provider (PR suggestion commits) instead of only showing the diff in chat.
+- Session replay / export as a markdown report for sharing with a team.
 
-## Contributing
+---
 
-To contribute to the project, get started by reading our [Contributing Guide](https://github.com/the-pr-agent/pr-agent/blob/b09eec265ef7d36c232063f76553efb6b53979ff/CONTRIBUTING.md).
-
-
-## Big News for PR-Agent
-
-PR-Agent has a new home!
-
-After years of building this tool alongside the community, Qodo has donated PR-Agent to the open-source community - and we couldn't be more excited about what comes next.
-
-The project now lives in the PR-Agent org on GitHub, is fully community-owned, and is open for contributions and additional maintainers.
-
-What else changed: 
-- Docs moved to - www.pr-agent.ai
-- Qodo Merge (Qodo 1.0), the hosted URL, which was the enterprise version of PR-Agent, has been rebranded and evolved into Qodo (Qodo 2.0), a full AI code review platform.
-
-## ❤️ Community
-
-This open-source release remains here as a community contribution from Qodo — the origin of modern AI-powered code collaboration. We’re proud to share it and inspire developers worldwide.
-
-The project now has its first external maintainer, Naor ([@naorpeled](https://github.com/naorpeled)), and is currently in the process of being donated to an open-source foundation.
+This module builds on [PR-Agent](https://github.com/the-pr-agent/pr-agent), which is community-maintained after being donated by Qodo to the open-source community. See the [upstream README](https://github.com/the-pr-agent/pr-agent) for the base project — supported git providers, deployment modes, and the existing one-shot tools (`/review`, `/improve`, `/describe`, `/ask`).
