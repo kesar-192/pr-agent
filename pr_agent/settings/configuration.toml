@@ -4,8 +4,9 @@
 
 [config]
 # models
-model="gpt-5.5-2026-04-23"
+model="groq/llama-3.3-70b-versatile"
 fallback_models=["gpt-5.4-mini"]
+custom_model_max_tokens=32000
 #model_reasoning="gpt-5.4-mini" # dedicated reasoning model for self-reflection
 #model_weak="gpt-5.4-nano" # optional, a weaker model to use for some easier tasks
 # CLI
@@ -35,7 +36,7 @@ repo_context_max_lines = 500 # Maximum total rendered lines for repo context, in
 max_description_tokens = 500
 max_commits_tokens = 500
 max_model_tokens = 32000 # Limits the maximum number of tokens that can be used by any model, regardless of the model's default capabilities.
-custom_model_max_tokens=-1 # for models not in the default list
+#custom_model_max_tokens=-1 # for models not in the default list
 model_token_count_estimate_factor=0.3 # factor to increase the token count estimate, in order to reduce likelihood of model failure due to too many tokens - applicable only when requesting an accurate estimate.
 # patch extension logic
 patch_extension_skip_types =[".md",".txt"]
@@ -427,6 +428,36 @@ artifact_label = ""
 target_tools = ["pr_reviewer", "pr_description", "pr_code_suggestions"]
 # Max artifact size in characters (content is truncated if exceeded)
 max_artifact_size = 50000
+
+[prompting_agent]
+enabled = true
+model = "groq/llama-3.3-70b-versatile"
+weak_model = "groq/llama-3.1-8b-instant"
+temperature = 0.2
+session_ttl_minutes = 60
+max_conversation_turns = 50
+max_findings_per_review = 20
+max_context_turns = 20
+enable_streaming = true
+publish_initial_review = true
+extra_instructions = ""
+enable_code_suggestions = true
+response_format = "json"
+
+[prompting_agent.web]
+enabled = true
+port = 8090
+host = "0.0.0.0"
+static_files_path = "pr_agent/web"
+cors_origins = ["*"]
+
+# MongoDB persistence for the prompting agent. Leave mongodb_uri empty to
+# fall back to the in-memory SessionManager (local dev without Docker/Mongo).
+# In docker-compose.prompting-agent.yml this is set to mongodb://mongo-db:27017
+[prompting_agent.storage]
+mongodb_uri = ""
+database_name = "prompting_agent"
+collection_name = "sessions"
 
 [azure_devops]
 default_comment_status = "closed"

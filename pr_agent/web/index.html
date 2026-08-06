@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PR-Agent — Interactive Review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+</head>
+<body>
+
+  <!-- ============================== TOP NAVBAR ============================== -->
+  <header id="topnav">
+    <div class="topnav-left">
+      <span class="brand">
+        <span class="brand-mark">&#9635;</span> PR-Agent
+      </span>
+
+      <button id="new-session-btn" type="button" class="nav-btn">+ New session</button>
+
+      <div class="session-picker">
+        <button id="session-picker-btn" type="button" class="nav-btn" aria-expanded="false">
+          Sessions <span id="session-count-badge">0</span>
+        </button>
+        <div id="session-picker-dropdown" hidden>
+          <ul id="session-list"></ul>
+          <p id="session-list-empty" class="empty-note">No sessions yet.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="topnav-center">
+      <form id="pr-url-form">
+        <input id="pr-url-input" type="text" placeholder="Paste a PR URL to analyze — https://github.com/org/repo/pull/42" required />
+        <button type="submit" id="start-review-btn">
+          <span class="btn-label">Analyze</span>
+          <span class="btn-spinner" hidden></span>
+        </button>
+      </form>
+    </div>
+
+    <div class="topnav-right">
+      <div class="session-meta" id="session-meta">
+        <span class="dot" id="live-dot"></span>
+        <span id="session-id-label">no session</span>
+        <span class="badge model-badge" id="model-badge">claude-sonnet</span>
+      </div>
+      <button id="close-session-btn" type="button" class="nav-btn" disabled>End &amp; summarize</button>
+      <button id="theme-toggle-btn" type="button" class="icon-btn" title="Toggle theme" aria-label="Toggle light/dark theme">
+        <span id="theme-icon">&#9789;</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============================== WORKSPACE ============================== -->
+  <div id="app-shell">
+
+    <!-- ---------------- LEFT: sessions + file tree (collapsible) ---------------- -->
+    <aside id="left-sidebar">
+      <button id="collapse-sidebar-btn" type="button" title="Collapse sidebar">&#171;</button>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">Changed files</div>
+        <div id="file-tree" aria-label="Changed files"></div>
+        <p id="file-tree-empty" class="empty-note">No files yet.</p>
+      </div>
+    </aside>
+
+    <!-- ---------------- CENTER: diff viewer ---------------- -->
+    <main id="diff-panel">
+      <div class="panel-header">
+        <span class="panel-title" id="diff-file-title">Diff</span>
+        <span class="status-badge idle" id="diff-status-badge">no session</span>
+      </div>
+
+      <div id="diff-scroll">
+        <table id="diff-table">
+          <tbody id="diff-body"></tbody>
+        </table>
+        <p id="diff-empty" class="empty-note">Analyze a PR above to see the diff here.</p>
+      </div>
+    </main>
+
+    <!-- ---------------- RIGHT: manifest / chat (fixed width) ---------------- -->
+    <aside id="chat-sidebar">
+      <div class="panel-header">
+        <span class="panel-title">Review manifest</span>
+        <span class="live-indicator">
+          <span class="dot" id="chat-live-dot"></span>
+          <span id="chat-live-label">idle</span>
+        </span>
+      </div>
+
+      <div id="findings-manifest"></div>
+
+      <div id="chat-messages"></div>
+
+      <form id="chat-form">
+        <textarea id="chat-input" rows="2" placeholder="Ask a question, or say 'fix it'…" disabled></textarea>
+        <div class="chat-actions">
+          <button type="button" id="cancel-btn" hidden>Cancel</button>
+          <button type="submit" id="send-btn" disabled>Send</button>
+        </div>
+      </form>
+    </aside>
+
+  </div>
+
+  <!-- summary modal, shown after "End session" -->
+  <div id="summary-modal" hidden>
+    <div class="summary-modal-content panel">
+      <div class="panel-header">
+        <span class="panel-title">Session summary</span>
+        <button id="close-summary-btn" type="button">&times;</button>
+      </div>
+      <div id="summary-body"></div>
+    </div>
+  </div>
+
+  <!-- inline "add comment" popover, positioned next to a clicked diff line -->
+  <div id="comment-popover" hidden>
+    <textarea id="comment-input" rows="2" placeholder="Discuss this line…"></textarea>
+    <div class="comment-popover-actions">
+      <button type="button" id="comment-cancel-btn">Cancel</button>
+      <button type="button" id="comment-send-btn">Send to chat</button>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

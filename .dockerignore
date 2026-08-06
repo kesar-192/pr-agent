@@ -1,6 +1,32 @@
+# Secrets — never bake into images
+pr_agent/settings/.secrets.toml
+settings_prod/
+.env
+
+# Virtual environments
 .venv/
 venv/
-pr_agent/settings/.secrets.toml
-pics/
-pr_agent.egg-info/
+
+# Build artifacts
+__pycache__
+dist/
+*.egg-info/
 build/
+
+# IDE / local config
+.idea/
+.lsp/
+.vscode/
+.qodo
+
+# Git
+.git/
+
+# Local docs cache
+docs/.cache/
+
+# OS metadata
+.DS_Store
+
+# Logs
+*.log

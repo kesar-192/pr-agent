@@ -1,0 +1,87 @@
+services:
+  prompting-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prompting_agent
+    image: pr-agent/prompting-agent:latest
+    container_name: pr-agent-prompting
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      # ── LLM Provider Keys ──────────────────────────────────────────
+      # At least one is required.
+      # - GROQ_API_KEY=${GROQ_API_KEY:-}       # groq/llama-3.3-70b-versatile
+      # - OPENAI_API_KEY=${OPENAI_API_KEY:-}   # gpt-4o / gpt-4o-mini
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}  # claude-sonnet-4
+      #
+      # ── Git Provider Token (required) ──────────────────────────────
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      #
+      # ── MongoDB persistence (optional but recommended) ──────────────
+      # Points the prompting agent at the mongo-db service below. History is
+      # stored in MongoDB and dumped to ./mongo_backups/history_backup.json
+      # every 60s (see docker/mongo/entrypoint.sh). Unset/empty => in-memory.
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo-db:27017}
+      #
+      # ── How to pass secrets ────────────────────────────────────────
+      # Option A — .env file in the project root:
+      #   $ echo "GITHUB_TOKEN=ghp_..." >> .env
+      #   $ docker compose -f docker-compose.prompting-agent.yml up
+      #
+      # Option B — inline:
+      #   $ GITHUB_TOKEN=ghp_... GROQ_API_KEY=gsk_... \
+      #     docker compose -f docker-compose.prompting-agent.yml up
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      mongo-db:
+        condition: service_healthy
+
+  mongo-db:
+    image: mongo:7
+    container_name: pr-agent-mongo
+    restart: unless-stopped
+    entrypoint: ["/scripts/entrypoint.sh"]
+    environment:
+      - MONGO_DATABASE=prompting_agent
+      - MONGO_COLLECTION=sessions
+      # How often the sessions collection is dumped to the host JSON file.
+      - BACKUP_INTERVAL_SECONDS=${BACKUP_INTERVAL_SECONDS:-60}
+    volumes:
+      # MongoDB's own data files (survives normal restarts).
+      - mongo-data:/data/db
+      # Host-visible JSON backup - survives even if the mongo container is lost.
+      - ./mongo_backups:/backups
+      - ./docker/mongo/entrypoint.sh:/scripts/entrypoint.sh:ro
+    healthcheck:
+      # Healthy only once mongod is up AND the JSON restore (if any) finished.
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1}).ok' 2>/dev/null | grep -q 1 && [ -f /backups/.restored ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  prompting-frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    image: pr-agent/prompting-frontend:latest
+    container_name: pr-agent-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - BACKEND_URL=http://prompting-agent:8090
+    depends_on:
+      prompting-agent:
+        condition: service_started
+
+volumes:
+  mongo-data:

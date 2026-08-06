@@ -19,6 +19,7 @@ from pr_agent.tools.pr_questions import PRQuestions
 from pr_agent.tools.pr_reviewer import PRReviewer
 from pr_agent.tools.pr_similar_issue import PRSimilarIssue
 from pr_agent.tools.pr_update_changelog import PRUpdateChangelog
+from pr_agent.tools.pr_prompting_agent import PRPromptingAgent
 
 command2class = {
     "auto_review": PRReviewer,
@@ -39,6 +40,8 @@ command2class = {
     "similar_issue": PRSimilarIssue,
     "add_docs": PRAddDocs,
     "generate_labels": PRGenerateLabels,
+    "prompting_agent": PRPromptingAgent,
+    "discuss": PRPromptingAgent,
     # SECURITY: "/help_docs" is temporarily disabled while the clone-target validation
     # fix is reviewed (see issue #2445). Re-enable by restoring `"help_docs": PRHelpDocs`
     # and its import once the hardening PR is merged.
