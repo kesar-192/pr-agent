@@ -451,6 +451,14 @@ host = "0.0.0.0"
 static_files_path = "pr_agent/web"
 cors_origins = ["*"]
 
+# MongoDB persistence for the prompting agent. Leave mongodb_uri empty to
+# fall back to the in-memory SessionManager (local dev without Docker/Mongo).
+# In docker-compose.prompting-agent.yml this is set to mongodb://mongo-db:27017
+[prompting_agent.storage]
+mongodb_uri = ""
+database_name = "prompting_agent"
+collection_name = "sessions"
+
 [azure_devops]
 default_comment_status = "closed"
 

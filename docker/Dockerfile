@@ -52,6 +52,7 @@ ADD docker/mosaico docker/mosaico
 
 FROM base AS prompting_agent
 ADD pr_agent pr_agent
+RUN pip install --no-cache-dir "pymongo>=4.6,<5.0"
 EXPOSE 8090
 
 RUN useradd --system --uid 1001 pragent \

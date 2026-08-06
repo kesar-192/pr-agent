@@ -17,3 +17,6 @@ docs/.cache/
 .qodo
 poetry.lock
 .log
+
+# MongoDB host-visible history backup (written by mongo-db container)
+mongo_backups/

@@ -35,6 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from pr_agent.sessions.session_manager import SessionManager, SessionNotFoundError
+from pr_agent.sessions.mongo_store import build_mongo_store
 from pr_agent.algo.ai_handlers.litellm_ai_handler import LiteLLMAIHandler
 from pr_agent.git_providers import get_git_provider_with_context
 from pr_agent.config_loader import get_settings
@@ -106,12 +107,18 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    # Attach MongoDB persistence (no-op in-memory when no URI is configured).
+    session_manager.store = build_mongo_store()
+    if session_manager.store is not None and session_manager.store.available:
+        session_manager.load_from_store()
     await session_manager.start_cleanup_task()
 
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
     await session_manager.stop_cleanup_task()
+    if session_manager.store is not None:
+        session_manager.store.flush()
 
 
 # --------------------------------------------------------------------------- #

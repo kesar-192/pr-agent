@@ -279,3 +279,33 @@ class ReviewSession:
             "last_active": self.last_active.isoformat(),
             "ttl_minutes": self.ttl_minutes,
         }
+
+    def to_persistable_dict(self) -> Dict[str, Any]:
+        """Full serialization for durable storage (MongoDB / JSON backup).
+
+        Like ``to_dict()`` but also includes ``diff_content`` so a session can
+        be fully restored and resumed after a restart.
+        """
+        data = self.to_dict()
+        data["diff_content"] = self.diff_content
+        return data
+
+    @classmethod
+    def from_persistable_dict(cls, data: Dict[str, Any]) -> "ReviewSession":
+        """Rebuild a ReviewSession from :meth:`to_persistable_dict` output."""
+        session = cls(
+            session_id=data["session_id"],
+            pr_url=data["pr_url"],
+            diff_content=data.get("diff_content", ""),
+            pr_metadata=data.get("pr_metadata", {}) or {},
+        )
+        session.conversation_history = [
+            ChatMessage.from_dict(m) for m in data.get("conversation_history", [])
+        ]
+        session.findings = [Finding.from_dict(f) for f in data.get("findings", [])]
+        session.current_finding_id = data.get("current_finding_id")
+        session.turn_count = data.get("turn_count", 0)
+        session.created_at = datetime.fromisoformat(data["created_at"])
+        session.last_active = datetime.fromisoformat(data["last_active"])
+        session.ttl_minutes = data.get("ttl_minutes", 60)
+        return session

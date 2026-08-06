@@ -8,7 +8,7 @@ from pr_agent.sessions.session import (
     FindingStatus,
     ReviewSession,
 )
-from pr_agent.sessions.session_manager import SessionManager
+from pr_agent.sessions.session_manager import SessionManager, SessionNotFoundError
 
 
 # ----------------------------------------------------------------------- #
@@ -213,12 +213,17 @@ class TestReviewSession:
     def test_to_dict_keys(self):
         s = self._make_session()
         sd = s.to_dict()
-        expected = {"session_id", "pr_url", "diff_content", "pr_metadata",
+        expected = {"session_id", "pr_url", "pr_metadata",
                      "conversation_history", "findings", "current_finding_id",
                      "turn_count", "created_at", "last_active", "ttl_minutes"}
         assert set(sd.keys()) == expected
         assert sd["pr_url"] == "https://github.com/org/repo/pull/1"
-        assert sd["diff_content"] == "--- a\n+++ b"
+        assert "diff_content" not in sd
+
+    def test_to_persistable_dict_includes_diff_content(self):
+        s = self._make_session()
+        pd = s.to_persistable_dict()
+        assert pd["diff_content"] == "--- a\n+++ b"
 
 
 # ----------------------------------------------------------------------- #
@@ -238,8 +243,8 @@ class TestSessionManager:
         sm = SessionManager()
         try:
             sm.get_session("nope")
-            assert False, "Should have raised ValueError"
-        except ValueError:
+            assert False, "Should have raised SessionNotFoundError"
+        except SessionNotFoundError:
             pass
 
     def test_get_expired_session_removes_and_raises(self):
@@ -250,7 +255,7 @@ class TestSessionManager:
         try:
             sm.get_session(sid)
             assert False
-        except ValueError:
+        except SessionNotFoundError:
             pass
 
     def test_append_message(self):
@@ -274,9 +279,8 @@ class TestSessionManager:
         sm.append_message(sid, "user", "Check this")
         sm.append_message(sid, "assistant", "Found issue")
         ctx = sm.get_conversation_context(sid)
-        assert "[Turn" in ctx
-        assert "Check this" in ctx
-        assert "Found issue" in ctx
+        assert "user: Check this" in ctx
+        assert "assistant: Found issue" in ctx
 
     def test_update_finding_type_coercion(self):
         sm = SessionManager()
@@ -288,14 +292,10 @@ class TestSessionManager:
         assert updated.status == FindingStatus.DISCUSSED
         assert updated.severity == FindingSeverity.HIGH
 
-    def test_update_finding_nonexistent_raises(self):
+    def test_update_finding_nonexistent_returns_none(self):
         sm = SessionManager()
         sid = sm.create_session("https://x", "d", {})
-        try:
-            sm.update_finding(sid, "nope", status="open")
-            assert False
-        except ValueError:
-            pass
+        assert sm.update_finding(sid, "nope", status="open") is None
 
     def test_get_active_findings(self):
         sm = SessionManager()
@@ -317,16 +317,12 @@ class TestSessionManager:
         try:
             sm.get_session(sid)
             assert False
-        except ValueError:
+        except SessionNotFoundError:
             pass
 
-    def test_close_nonexistent_raises(self):
+    def test_close_nonexistent_returns_none(self):
         sm = SessionManager()
-        try:
-            sm.close_session("nope")
-            assert False
-        except ValueError:
-            pass
+        assert sm.close_session("nope") is None
 
     def test_cleanup_expired_returns_zero_when_none_expired(self):
         sm = SessionManager()
@@ -342,5 +338,5 @@ class TestSessionManager:
         try:
             sm.get_session(sid)
             assert False
-        except ValueError:
+        except SessionNotFoundError:
             pass
