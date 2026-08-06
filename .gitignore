@@ -7,6 +7,7 @@ skpro/
 .venv/
 venv/
 pr_agent/settings/.secrets.toml
+settings_prod/
 __pycache__
 dist/
 *.egg-info/
@@ -16,3 +17,6 @@ docs/.cache/
 .qodo
 poetry.lock
 .log
+
+# MongoDB host-visible history backup (written by mongo-db container)
+mongo_backups/

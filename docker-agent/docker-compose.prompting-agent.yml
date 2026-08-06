@@ -1,0 +1,22 @@
+services:
+  prompting-agent:
+    build:
+      context: .
+      dockerfile: pr-agent/Dockerfile.prompting-agent
+    image: pr-agent/prompting-agent:latest
+    container_name: pr-agent-prompting
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      # Wire these up when build_agent() in prompting_server.py is switched
+      # from Mock* classes to the real LiteLLM/GitProvider stack.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

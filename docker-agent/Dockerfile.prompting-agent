@@ -1,0 +1,36 @@
+# pr_agent/servers/prompting_server.py serves both the FastAPI/SSE API and
+# the static web UI (via StaticFiles mount), so a single lightweight
+# container is enough — no separate frontend build stage required.
+
+FROM python:3.12-slim AS base
+
+WORKDIR /app
+
+# System deps kept minimal; add build-essential here if you later add
+# packages (e.g. psycopg2) that need compilation.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \ 
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pr_agent/requirements-prompting-agent.txt ./requirements-prompting-agent.txt
+RUN pip install --no-cache-dir -r requirements-prompting-agent.txt
+
+# Copy only what the prompting agent needs to run
+COPY pr_agent/__init__.py ./pr_agent/__init__.py
+COPY pr_agent/sessions ./pr_agent/sessions
+COPY pr_agent/tools ./pr_agent/tools
+COPY pr_agent/servers ./pr_agent/servers
+COPY pr_agent/web ./pr_agent/web
+COPY pr_agent/settings/prompting_agent_prompts.toml ./pr_agent/settings/prompting_agent_prompts.toml
+
+# Non-root user
+RUN useradd --system --uid 1001 pragent \
+    && chown -R pragent:pragent /app
+USER pragent
+
+EXPOSE 8090
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8090/ || exit 1
+
+CMD ["uvicorn", "pr_agent.servers.prompting_server:app", "--host", "0.0.0.0", "--port", "8090"]
